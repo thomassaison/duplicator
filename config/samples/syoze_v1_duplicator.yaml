@@ -1,0 +1,46 @@
+---
+kind: Namespace
+apiVersion: v1
+metadata:
+  name: testa
+  labels:
+    space: "true"
+---
+kind: Namespace
+apiVersion: v1
+metadata:
+  name: testb
+  labels:
+    space: "true"
+---
+kind: Namespace
+apiVersion: v1
+metadata:
+  name: testc
+  labels:
+    space: "true"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  namespace: default
+  name: test-cm
+data:
+  test.yaml: |
+    okok
+---
+apiVersion: syoze.syoze.fr/v1
+kind: Duplicator
+metadata:
+  labels:
+    app.kubernetes.io/name: duplicator
+    app.kubernetes.io/managed-by: kustomize
+  name: duplicator-sample
+spec:
+  namespaceSelector:
+    matchLabels:
+      space: "true"
+  targetResources:
+    - kind: ConfigMap
+      namespace: default
+      name: test-cm

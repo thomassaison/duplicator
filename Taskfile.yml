@@ -1,0 +1,14 @@
+# https://taskfile.dev
+
+version: '3'
+
+vars:
+  NAME: test
+
+tasks:
+  up:
+    cmds:
+      - kind create cluster --name {{ .NAME }} || true
+      - kubectl get ns
+      - kubectl apply -k config/crd/
+      - kubectl apply -k config/samples/

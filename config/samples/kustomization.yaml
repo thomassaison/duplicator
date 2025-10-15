@@ -1,0 +1,4 @@
+## Append samples of your project ##
+resources:
+- syoze_v1_duplicator.yaml
+# +kubebuilder:scaffold:manifestskustomizesamples
