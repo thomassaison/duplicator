@@ -52,6 +52,8 @@ spec:
                 description: TargetResources specifies the resources to duplicate.
                 items:
                   properties:
+                    apiVersion:
+                      type: string
                     kind:
                       type: string
                     name:
@@ -59,6 +61,7 @@ spec:
                     namespace:
                       type: string
                   required:
+                  - apiVersion
                   - kind
                   type: object
                 type: array

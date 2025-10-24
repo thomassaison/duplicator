@@ -39,8 +39,13 @@ metadata:
 spec:
   namespaceSelector:
     matchLabels:
-      space: "true"
+      secret-store-duplication: "true"
   targetResources:
-    - kind: ConfigMap
-      namespace: default
-      name: test-cm
+    - kind: Secret
+      apiVersion: v1
+      namespace: openbao
+      name: openbao-credentials
+    - kind: SecretStore
+      apiVersion: external-secrets.io/v1
+      namespace: openbao
+      name: openbao-store

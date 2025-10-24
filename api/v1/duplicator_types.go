@@ -28,9 +28,10 @@ type NamespaceSelector struct {
 }
 
 type TargetResource struct {
-	Kind      string `json:"kind"`
-	Namespace string `json:"namespace,omitempty"`
-	Name      string `json:"name,omitempty"`
+	APIVersion string `json:"apiVersion"`
+	Kind       string `json:"kind"`
+	Namespace  string `json:"namespace,omitempty"`
+	Name       string `json:"name,omitempty"`
 }
 
 // DuplicatorSpec defines the desired state of Duplicator.

@@ -8,7 +8,8 @@ vars:
 tasks:
   up:
     cmds:
-      - kind create cluster --name {{ .NAME }} || true
+      - make && make manifests
       - kubectl get ns
       - kubectl apply -k config/crd/
       - kubectl apply -k config/samples/
+      - go run cmd/main.go

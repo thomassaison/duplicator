@@ -22,6 +22,7 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -76,68 +77,60 @@ func (r *DuplicatorReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		return ctrl.Result{}, err
 	}
 
-	if duplicator.ObjectMeta.DeletionTimestamp != nil {
-		// Handle deletion: remove duplicated resources in target namespace
+	// Handle deletion
+	if !duplicator.ObjectMeta.DeletionTimestamp.IsZero() {
 		for _, ns := range nsList.Items {
 			for _, tr := range duplicator.Spec.TargetResources {
-				switch tr.Kind {
-				case "ConfigMap":
-					if err := r.Delete(ctx, &v1.ConfigMap{ObjectMeta: metav1.ObjectMeta{Namespace: ns.Name, Name: tr.Name}}); err != nil {
-						return ctrl.Result{}, fmt.Errorf("unable to delete ConfigMap: %w", err)
-					} else {
-						logger.Info("Deleted ConfigMap from target namespace", "name", tr.Name, "namespace", duplicator.Namespace)
-					}
-				case "Secret":
-					if err := r.Delete(ctx, &v1.Secret{ObjectMeta: metav1.ObjectMeta{Namespace: ns.Name, Name: tr.Name}}); err != nil {
-						return ctrl.Result{}, fmt.Errorf("unable to delete Secret: %w", err)
-					} else {
-						logger.Info("Deleted Secret from target namespace", "name", tr.Name, "namespace", duplicator.Namespace)
-					}
+				obj, err := r.buildObjectForKind(tr.APIVersion, tr.Kind)
+				if err != nil {
+					return ctrl.Result{}, fmt.Errorf("cannot build GVK object: %w", err)
 				}
+				obj.SetName(tr.Name)
+				obj.SetNamespace(ns.Name)
+
+				if err := r.Delete(ctx, obj); client.IgnoreNotFound(err) != nil {
+					return ctrl.Result{}, fmt.Errorf("failed to delete object %s/%s: %w", ns.Name, tr.Name, err)
+				}
+				logger.Info("Deleted duplicated resource", "kind", tr.Kind, "name", tr.Name, "namespace", ns.Name)
 			}
 		}
 
-		// Remove finalizer
-		if containsString(duplicator.Finalizers, finalizerName) {
-			duplicator.Finalizers = removeString(duplicator.Finalizers, finalizerName)
-			if err := r.Update(ctx, &duplicator); err != nil {
-				logger.Error(err, "unable to remove finalizer")
-				return ctrl.Result{}, err
-			}
+		duplicator.Finalizers = removeString(duplicator.Finalizers, finalizerName)
+		if err := r.Update(ctx, &duplicator); err != nil {
+			logger.Error(err, "unable to remove finalizer")
+			return ctrl.Result{}, err
 		}
 		return ctrl.Result{}, nil
 	}
 
+	// Handle duplication
 	for _, ns := range nsList.Items {
-		logger.Info("Matched namespace", "name", ns.Name)
 		for _, tr := range duplicator.Spec.TargetResources {
-			switch tr.Kind {
-			case "ConfigMap":
-				var cm v1.ConfigMap
-				if err := r.Client.Get(ctx, client.ObjectKey{Namespace: tr.Namespace, Name: tr.Name}, &cm); err != nil {
-					return ctrl.Result{}, fmt.Errorf("unable to fetch Secret %s/%s: %w", tr.Namespace, tr.Name, err)
-				}
-
-				if err := duplicateAndCreateObject(ctx, r.Client, &cm, ns.Name, &duplicator); err != nil {
-					return ctrl.Result{}, err
-				}
-			case "Secret":
-				var secret v1.Secret
-				if err := r.Client.Get(ctx, client.ObjectKey{Namespace: tr.Namespace, Name: tr.Name}, &secret); err != nil {
-					return ctrl.Result{}, fmt.Errorf("unable to fetch Secret %s/%s: %w", tr.Namespace, tr.Name, err)
-				}
-
-				if err := duplicateAndCreateObject(ctx, r.Client, &secret, ns.Name, &duplicator); err != nil {
-					return ctrl.Result{}, err
-				}
-
-			default:
-				return ctrl.Result{}, fmt.Errorf("duplicator does not support this object")
+			srcObj, err := r.buildObjectForKind(tr.APIVersion, tr.Kind)
+			if err != nil {
+				return ctrl.Result{}, fmt.Errorf("cannot build GVK: %w", err)
 			}
+			if err := r.Get(ctx, client.ObjectKey{Namespace: tr.Namespace, Name: tr.Name}, srcObj); err != nil {
+				return ctrl.Result{}, fmt.Errorf("failed to get source object %s/%s: %w", tr.Namespace, tr.Name, err)
+			}
+
+			if err := duplicateAndCreateObject(ctx, r.Client, srcObj, ns.Name, &duplicator); err != nil {
+				return ctrl.Result{}, err
+			}
+
+			logger.Info("Duplicated object", "kind", tr.Kind, "name", tr.Name, "toNamespace", ns.Name)
 		}
 	}
 
 	return ctrl.Result{}, nil
+}
+
+// buildObjectForKind returns an empty runtime.Object for given APIVersion and Kind
+func (r *DuplicatorReconciler) buildObjectForKind(apiVersion, kind string) (client.Object, error) {
+	obj := &unstructured.Unstructured{}
+	obj.SetAPIVersion(apiVersion)
+	obj.SetKind(kind)
+	return obj, nil
 }
 
 func containsString(slice []string, s string) bool {
