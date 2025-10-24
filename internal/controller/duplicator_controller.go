@@ -63,7 +63,7 @@ func (r *DuplicatorReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 
 	finalizerName := "syoze.syoze.fr/duplicator-finalizer"
 	// Add finalizer if not present and not being deleted
-	if duplicator.ObjectMeta.DeletionTimestamp == nil && !containsString(duplicator.Finalizers, finalizerName) {
+	if duplicator.DeletionTimestamp == nil && !containsString(duplicator.Finalizers, finalizerName) {
 		duplicator.Finalizers = append(duplicator.Finalizers, finalizerName)
 		if err := r.Update(ctx, &duplicator); err != nil {
 			logger.Error(err, "unable to add finalizer")
@@ -78,13 +78,10 @@ func (r *DuplicatorReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	}
 
 	// Handle deletion
-	if !duplicator.ObjectMeta.DeletionTimestamp.IsZero() {
+	if !duplicator.DeletionTimestamp.IsZero() {
 		for _, ns := range nsList.Items {
 			for _, tr := range duplicator.Spec.TargetResources {
-				obj, err := r.buildObjectForKind(tr.APIVersion, tr.Kind)
-				if err != nil {
-					return ctrl.Result{}, fmt.Errorf("cannot build GVK object: %w", err)
-				}
+				obj := r.buildObjectForKind(tr.APIVersion, tr.Kind)
 				obj.SetName(tr.Name)
 				obj.SetNamespace(ns.Name)
 
@@ -106,10 +103,7 @@ func (r *DuplicatorReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	// Handle duplication
 	for _, ns := range nsList.Items {
 		for _, tr := range duplicator.Spec.TargetResources {
-			srcObj, err := r.buildObjectForKind(tr.APIVersion, tr.Kind)
-			if err != nil {
-				return ctrl.Result{}, fmt.Errorf("cannot build GVK: %w", err)
-			}
+			srcObj := r.buildObjectForKind(tr.APIVersion, tr.Kind)
 			if err := r.Get(ctx, client.ObjectKey{Namespace: tr.Namespace, Name: tr.Name}, srcObj); err != nil {
 				return ctrl.Result{}, fmt.Errorf("failed to get source object %s/%s: %w", tr.Namespace, tr.Name, err)
 			}
@@ -126,11 +120,11 @@ func (r *DuplicatorReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 }
 
 // buildObjectForKind returns an empty runtime.Object for given APIVersion and Kind
-func (r *DuplicatorReconciler) buildObjectForKind(apiVersion, kind string) (client.Object, error) {
+func (r *DuplicatorReconciler) buildObjectForKind(apiVersion, kind string) client.Object {
 	obj := &unstructured.Unstructured{}
 	obj.SetAPIVersion(apiVersion)
 	obj.SetKind(kind)
-	return obj, nil
+	return obj
 }
 
 func containsString(slice []string, s string) bool {
